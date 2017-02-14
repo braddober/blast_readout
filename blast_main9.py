@@ -32,6 +32,7 @@ import glob
 import os
 import sys
 import valon_synth
+import valon_synth9
 #sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 from socket import *
 from scipy import signal
@@ -41,7 +42,7 @@ class roachInterface(object):
     
     def __init__(self):
     	# self.bitstream = roach2_305_1024.fpg # DDS shift = 305, FFT = 1024
-	self.curpath = '/home/pcuser/data/11302016/'
+	self.curpath = '/home/pcuser/data/12072016/'
 	self.curvna = ' '
 	self.curtgt = ' '
 	self.zeros = signal.firwin(29, 1.5e3, window='hanning',nyq = 128.0e6)
@@ -49,6 +50,7 @@ class roachInterface(object):
 	#self.zeros = np.ones(27) #disables FIR
 	self.center_freq = 828.0 #783.0 for even bands  # this is the LO frequency in MHz
 	self.v1 = valon_synth.Synthesizer('/dev/ttyUSB0')
+	self.v2 = valon_synth9.Synthesizer('/dev/ttyUSB1')
 	#self.v1.set_frequency(0,self.center_freq,0.01) # LO
 	self.v1.set_frequency(8,512.0,0.01) # Clock 
         self.ip = '192.168.40.55'
@@ -626,7 +628,7 @@ class roachInterface(object):
         save_path = os.path.join(self.curpath + '/sweeps/vna', sweep_dir)
 	self.curvna = save_path
 	os.mkdir(save_path)
-	self.v1.set_frequency(0, center_freq/1.0e6, 0.01)
+	self.v2.set_frequency(2, center_freq/1.0e6, 0.01)
         span = self.pos_delta
 	start = center_freq - (span/2.)
         stop = center_freq + (span/2.) 
@@ -641,9 +643,9 @@ class roachInterface(object):
         if sweep:
 		for freq in self.sweep_freqs:
 		    print 'Sweep freq =', freq/1.0e6
-		    if self.v1.set_frequency(0, freq/1.0e6, 0.01): 
+		    if self.v2.set_frequency(2, freq/1.0e6, 0.01): 
 			self.store_UDP(100,freq,save_path,channels=len(self.test_comb)) 
-		self.v1.set_frequency(0,center_freq / (1.0e6), 0.01) # LO
+		self.v2.set_frequency(2,center_freq / (1.0e6), 0.01) # LO
 	self.plot_vna(save_path)
 	#self.find_kids_olimpo.main(path)
 	return 
@@ -676,13 +678,16 @@ class roachInterface(object):
         #self.bb_target_freqs = (self.target_freqs - center_freq/2)
         self.bb_target_freqs = np.roll(self.bb_target_freqs, - np.argmin(np.abs(self.bb_target_freqs)) - 1)
 	upconvert = np.sort((self.bb_target_freqs + center_freq)/1.0e6)
+	
         print "RF tones =", upconvert
-	self.v1.set_frequency(0,center_freq / (1.0e6), 0.01) # LO
+	self.v2.set_frequency(2,center_freq / (1.0e6), 0.01) # LO
+	self.v2.set_refdoubler(2,0) #turns off ref doubler
+	self.v2.set_pfd(2,10) #sets pfd to 10 MHz
 	print '\nTarget baseband freqs (MHz) =', self.bb_target_freqs/1.0e6
-	span = 100.0e3
+	span = 100.0e3 #is this wide enough?
 	start = center_freq - (span/2.)
         stop = center_freq + (span/2.) 
-        step = 2.5e3
+        step = 1.0e3
         sweep_freqs = np.arange(start, stop, step)
         sweep_freqs = np.round(sweep_freqs/step)*step
 	print "LO freqs =", sweep_freqs
@@ -693,13 +698,15 @@ class roachInterface(object):
 	if sweep:
 		for freq in sweep_freqs:
 		    print 'Sweep freq =', freq/1.0e6
-		    if self.v1.set_frequency(0, freq/1.0e6, 0.01): 
-			self.store_UDP(100,freq,save_path,channels=len(self.bb_target_freqs)) 
-		self.v1.set_frequency(0,center_freq / (1.0e6), 0.01) # LO
+		    if self.v2.set_frequency(2, freq/1.0e6, 0.01): 
+			self.store_UDP(100,freq,save_path,channels=len(self.bb_target_freqs))
+		self.v2.set_pfd(2,40) #sets it back to normal
+		self.v2.set_frequency(2,center_freq / (1.0e6), 0.01) # LO
 	self.plot_targ(save_path)
 	return
 
-    def optimize_kids(self, center_freq=750.0e6):
+    def optimize_kids(self):
+	center_freq = self.center_freq*1e6
         """Function that's designed to place the tones on the frequency of maximum responivity"""
 	newpath = raw_input('Is '+str(self.curtgt)+' the correct target directory? (y/n) ')
 	if newpath == 'y':
@@ -809,6 +816,7 @@ class roachInterface(object):
 	rf_freqs = np.zeros((len(bb_freqs),len(sweep_freqs)))
 	for chan in range(len(bb_freqs)):
 		rf_freqs[chan] = (sweep_freqs + bb_freqs[chan])/1.0e6
+	print np.shape(sweep_freqs), np.shape(Qs), np.shape(rf_freqs)
 	Q = np.reshape(np.transpose(Qs),(len(Qs[0])*len(sweep_freqs)))
 	I = np.reshape(np.transpose(Is),(len(Is[0])*len(sweep_freqs)))
 	mag = np.sqrt(I**2 + Q**2)

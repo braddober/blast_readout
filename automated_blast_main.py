@@ -35,19 +35,26 @@ import valon_synth
 #sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 from socket import *
 from scipy import signal
-import find_kids_blast as fk 
+import find_kids_blast as fk
+sys.path.append('/home/pcuser/instruments')
+import lakeshore370
+import cryocon22
+
+"""Change these values before each run"""
+basetemps = []
+loadtemps = []
 
 class roachInterface(object):
     
     def __init__(self):
     	# self.bitstream = roach2_305_1024.fpg # DDS shift = 305, FFT = 1024
-	self.curpath = '/home/pcuser/data/11302016/'
+	self.curpath = '/home/pcuser/data/11172016/'
 	self.curvna = ' '
 	self.curtgt = ' '
 	self.zeros = signal.firwin(29, 1.5e3, window='hanning',nyq = 128.0e6)
 	self.zeros = self.zeros[1:-1]
 	#self.zeros = np.ones(27) #disables FIR
-	self.center_freq = 828.0 #783.0 for even bands  # this is the LO frequency in MHz
+	self.center_freq = 770.0 #750.0  # this is the LO frequency in MHz
 	self.v1 = valon_synth.Synthesizer('/dev/ttyUSB0')
 	#self.v1.set_frequency(0,self.center_freq,0.01) # LO
 	self.v1.set_frequency(8,512.0,0.01) # Clock 
@@ -56,15 +63,10 @@ class roachInterface(object):
         self.dds_shift = 305 #312 with lpf firmware  # this is a number specific to the firmware used. It will change with a new firmware. 
 	self.dac_samp_freq = 512.0e6
         self.fpga_samp_freq = 256.0e6
-	""" This section is for uneven low / high bands for vna sweep """
-	#self.neg_delta=0.5e6
-	#self.pos_delta=self.neg_delta
-	#neg_freqs = np.arange(-234.001234e6+5.0e4,-73.001234e6+5.0e4, self.neg_delta)
-	#pos_freqs = np.arange(-44.02342e6,232.001234e6, self.pos_delta)
-	""" This section is for even low / high bands for vna sweep """
-	neg_freqs, self.neg_delta = np.linspace(-246.001234e6+5.0e4, -1.02342e6+5.0e4, 500, retstep = True)
-	pos_freqs, self.pos_delta = np.linspace(1.02342e6,246.001234e6, 500, retstep = True)
-	""" Make sure to pick one or the other above ^ """
+	#neg_freqs, self.neg_delta = np.linspace(-75.001234e6+5.0e4, -1.02342e6, 500, retstep = True)
+	#pos_freqs, self.pos_delta = np.linspace(1.02342e6,75.001234e6, 500, retstep = True)
+	neg_freqs, self.neg_delta = np.linspace(-246.001234e6+5.0e4, -10.02342e6+5.0e4, 500, retstep = True)
+	pos_freqs, self.pos_delta = np.linspace(10.02342e6,246.001234e6, 500, retstep = True)
 	self.test_comb = np.concatenate((neg_freqs, pos_freqs))
 	#self.test_comb = np.array([-180.1340, -100.23423, -50.913, 50.752, 100.56, 180.650])*1.0e6
 	#self.test_comb = np.array([50.0125, -237.12312])*1.0e6
@@ -719,7 +721,7 @@ class roachInterface(object):
         self.raw_I = self.raw_chan.real
         self.raw_Q = self.raw_chan.imag
         self.freq_array= np.empty([len(self.bb_freqs),len(self.lo_freqs)]) #[det channel, lo freqs]
-        self.loop_spacing = np.empty([len(self.bb_freqs),len(self.lo_freqs)-1])
+        self.loop_spacing = np.empty([len(self.bb_freqs),len(self.lo_freqs)])
         self.optimized_freqs=np.empty([len(self.bb_freqs)])
         for n in np.arange(len(self.lo_freqs)):
             #print np.shape(self.freq_array[:,n]),np.shape(self.bb_freqs),np.shape(self.lo_freqs[n])
@@ -737,8 +739,6 @@ class roachInterface(object):
             	self.optimized_freqs[n]=(self.freq_array[n,np.argmax(self.loop_spacing[n,:])+1]+self.freq_array[n,np.argmax(self.loop_spacing[n,:])])/2
             	print 'optimizing tone to ' + str(self.optimized_freqs[n])
             else:
-		print 'loop segments'
-		print self.loop_spacing[n,:]
             	print 'taking original tone of ' + str(self.bb_freqs[n,0]+self.center_freq*1e6)
             	self.optimized_freqs[n]=self.bb_freqs[n,0]+self.center_freq*1e6
         #save the new set of frequencies

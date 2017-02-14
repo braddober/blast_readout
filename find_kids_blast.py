@@ -3,9 +3,8 @@ import sys, os
 import matplotlib.pyplot as plt
 import scipy.ndimage
 
-#bb_freqs = np.load(os.path.join(path,'bb_freqs.npy'))
-#lo_freqs = np.load(os.path.join(path,'sweep_freqs.npy'))
-accum_len = 2**20
+#make sure to switch accum length
+
 def openStored(path):
 	files = sorted(os.listdir(path))
 	I_list = [os.path.join(path, filename) for filename in files if filename.startswith('I')]
@@ -15,20 +14,23 @@ def openStored(path):
 	return chan_I, chan_Q
 
 def filter_trace(path, bb_freqs, lo_freqs):
+	accum_len = 2**19
 	chan_I, chan_Q = openStored(path)
 	channels = np.arange(np.shape(chan_I)[1])
 	mag = np.zeros((len(channels),len(lo_freqs)))
 	chan_freqs = np.zeros((len(channels),len(lo_freqs)))
 	for chan in channels:
 		mag[chan] = (np.sqrt(chan_I[:,chan]**2 + chan_Q[:,chan]**2)) 
-		chan_freqs[chan] = (lo_freqs/2 + bb_freqs[chan])/1.0e6
+		#chan_freqs[chan] = (lo_freqs/2 + bb_freqs[chan])/1.0e6
+		chan_freqs[chan] = (lo_freqs + bb_freqs[chan])/1.0e6
 	mag = np.concatenate((mag[len(mag)/2:], mag[:len(mag)/2]))
 	mags = np.hstack(mag)
-	mags /= (2**15 - 1)
+	mags /= (2**17 - 1)
 	mags /= (accum_len/ 512)
 	mags = 20*np.log10(mags)
 	chan_freqs = np.hstack(chan_freqs)
 	chan_freqs = np.concatenate((chan_freqs[len(chan_freqs)/2:],chan_freqs[:len(chan_freqs)/2]))
+	#print chan_freqs	
 	return chan_freqs, mags
 
 def lowpass_cosine( y, tau, f_3db, width, padd_data=True):
@@ -90,8 +92,8 @@ def main(path):
 	lo_freqs = np.load(os.path.join(path,'sweep_freqs.npy'))
 	
 	sweep_step = 2.5 # kHz
-	smoothing_scale = 5000.0 # kHz
-	peak_threshold = 3. # mag units
+	smoothing_scale = 10000.0 # kHz
+	peak_threshold = 1.0 # mag units
 	spacing_threshold = 10000.0 # kHz
 
 	chan_freqs,mags = filter_trace(path, bb_freqs, lo_freqs)
@@ -126,8 +128,8 @@ def main(path):
 	plt.ylabel('dB')
 	# list of kid frequencies
 	target_freqs = chan_freqs[kid_idx]
-	print len(target_freqs), "pixels found"
 	print "Freqs =", chan_freqs[kid_idx]
+	print len(target_freqs), "pixels found"
 	prompt = raw_input('Save target freqs in ' + path + ' (y/n) (may overwrite) ? ')
 	if prompt == 'y':
 		np.save(path + '/target_freqs.npy', chan_freqs[kid_idx])

@@ -4,7 +4,7 @@ import sys
 import time 
 
 bitstream = sys.argv[1]
-ip = "192.168.40.52"
+ip = "192.168.40.55"
 
 def openClient():
 	print 'Connecting...'

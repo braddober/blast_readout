@@ -9,9 +9,9 @@ import casperfpga
 class FirmwareSnaps(object):
     
     	def __init__(self):
-		self.fpga = casperfpga.katcp_fpga.KatcpFpga("192.168.40.89",timeout=120.)
+		self.fpga = casperfpga.katcp_fpga.KatcpFpga("192.168.40.55",timeout=120.)
 		self.dds_shift = 305
-		self.accum_len = 2**21 
+		self.accum_len = 2**19 
 		self.fft_len = 1024
 	
     	def menu(self,prompt,options):
@@ -62,7 +62,7 @@ class FirmwareSnaps(object):
 			self.fpga.write_int('adc_snap_trig',1)    
 			self.fpga.write_int('adc_snap_trig',0)
 			adc = (np.fromstring(self.fpga.read('adc_snap_bram',(2**10)*8),dtype='>i2')).astype('float')
-			adc /= (2**16 - 1)
+			adc /= (2**15 - 1)
 			adc *= 1.1
 			# ADC full scale is 2.2 V
 			I = np.hstack(zip(adc[0::4],adc[1::4]))
@@ -100,6 +100,7 @@ class FirmwareSnaps(object):
 		plt.ylabel('Amplitude [mV]',fontsize = 20)
 		plt.xticks(np.arange(0,self.fft_len,5))
 		plt.xlim(0,freqlen)
+		plt.ylim(0,100.)
 		plt.xticks(np.arange(0,freqlen))
 		plt.grid()
 		plt.tight_layout()
@@ -113,7 +114,7 @@ class FirmwareSnaps(object):
 			mags /= ( (self.accum_len) / 512) 
 			# put into mV
 		        mags = 1000. * (mags/(2**17)) 	
-			plt.ylim((np.min(mags) - 0.001,np.max(mags) + 0.001))
+			#plt.ylim((np.min(mags) - 0.001,np.max(mags) + 0.001))
 			line1.set_ydata(mags)
 			plt.draw()
 			count += 1

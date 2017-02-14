@@ -41,30 +41,19 @@ class roachInterface(object):
     
     def __init__(self):
     	# self.bitstream = roach2_305_1024.fpg # DDS shift = 305, FFT = 1024
-	self.curpath = '/home/pcuser/data/11302016/'
-	self.curvna = ' '
-	self.curtgt = ' '
-	self.zeros = signal.firwin(29, 1.5e3, window='hanning',nyq = 128.0e6)
-	self.zeros = self.zeros[1:-1]
-	#self.zeros = np.ones(27) #disables FIR
-	self.center_freq = 828.0 #783.0 for even bands  # this is the LO frequency in MHz
+	self.center_freq = 750.0  # this is the LO frequency in MHz
 	self.v1 = valon_synth.Synthesizer('/dev/ttyUSB0')
 	#self.v1.set_frequency(0,self.center_freq,0.01) # LO
 	self.v1.set_frequency(8,512.0,0.01) # Clock 
-        self.ip = '192.168.40.55'
+        self.ip = '192.168.40.52'
 	self.fpga = casperfpga.katcp_fpga.KatcpFpga(self.ip,timeout=120.) 
-        self.dds_shift = 305 #312 with lpf firmware  # this is a number specific to the firmware used. It will change with a new firmware. 
+        self.dds_shift = 305  # this is a number specific to the firmware used. It will change with a new firmware. 
 	self.dac_samp_freq = 512.0e6
         self.fpga_samp_freq = 256.0e6
-	""" This section is for uneven low / high bands for vna sweep """
-	#self.neg_delta=0.5e6
-	#self.pos_delta=self.neg_delta
-	#neg_freqs = np.arange(-234.001234e6+5.0e4,-73.001234e6+5.0e4, self.neg_delta)
-	#pos_freqs = np.arange(-44.02342e6,232.001234e6, self.pos_delta)
-	""" This section is for even low / high bands for vna sweep """
-	neg_freqs, self.neg_delta = np.linspace(-246.001234e6+5.0e4, -1.02342e6+5.0e4, 500, retstep = True)
-	pos_freqs, self.pos_delta = np.linspace(1.02342e6,246.001234e6, 500, retstep = True)
-	""" Make sure to pick one or the other above ^ """
+	#neg_freqs, self.neg_delta = np.linspace(-75.001234e6+5.0e4, -1.02342e6, 500, retstep = True)
+	#pos_freqs, self.pos_delta = np.linspace(1.02342e6,75.001234e6, 500, retstep = True)
+	neg_freqs, self.neg_delta = np.linspace(-246.001234e6+5.0e4, -10.02342e6, 50, retstep = True)
+	pos_freqs, self.pos_delta = np.linspace(10.02342e6,246.001234e6, 50, retstep = True)
 	self.test_comb = np.concatenate((neg_freqs, pos_freqs))
 	#self.test_comb = np.array([-180.1340, -100.23423, -50.913, 50.752, 100.56, 180.650])*1.0e6
 	#self.test_comb = np.array([50.0125, -237.12312])*1.0e6
@@ -72,33 +61,20 @@ class roachInterface(object):
 	self.test_comb = np.roll(self.test_comb, - np.argmin(np.abs(self.test_comb)) - 1)
 	self.upconvert = np.sort(self.test_comb/1.0e6  + self.center_freq)
 	self.LUTbuffer_len = 2**21
-        self.dac_freq_res = (self.dac_samp_freq/self.LUTbuffer_len)*2 #set res to 488 Hz
+        self.dac_freq_res = self.dac_samp_freq/self.LUTbuffer_len
         self.fft_len = 1024
-        self.accum_len = (2**19) #2**19 for 488 hz, 20**20 for 244 hz
+        self.accum_len = (2**20) 
         self.accum_freq = self.fpga_samp_freq/(self.accum_len - 1)
 	self.fpga.write_int('sync_accum_len', self.accum_len - 1)
 	self.s = socket(AF_PACKET, SOCK_RAW, htons(3))
         self.s.setsockopt(SOL_SOCKET, SO_RCVBUF, 8192 + 42)
-	self.s.bind(('eth4', 3))
+	self.s.bind(('eth0', 3))
         self.main_prompt = '\n\t\033[33mKID-PY ROACH2 Readout\033[0m\n\t\033[35mChoose number and press Enter\033[0m'
-        self.main_opts= ['Initialize','Write VNA comb', 'Write saved bb freqs','Print packet info to screen (UDP)','VNA sweep and plot','Locate resonances','Target sweep and plot', 'Plot channel phase PSD (quick look)','Plot channel amp PSD (quick look)', 'Save dirfile for all channels (I, Q, phase)', 'Save dirfile for all channels using centered phase (I, Q, phase)','Optimize Tones','Stream data to a single .npy file','Exit'] 
+        self.main_opts= ['Initialize','Write test comb', 'Write saved bb freqs','Print packet info to screen (UDP)','VNA sweep and plot','Locate resonances','Target sweep and plot', 'Plot channel phase PSD (quick look)','Plot channel amp PSD (quick look)', 'Save dirfile for all channels (I, Q, phase)', 'Save dirfile for all channels using centered phase (I, Q, phase)','Exit'] 
 	#self.cold_array150_rf = np.load('/home/olimpo/olimpo_readout/sweeps/vna/0805_1/target_freqs.npy')
         #self.cold_array150_bb = (((self.cold_array150_rf) - (self.center_freq)/2.))*1.0e6
         #self.cold_array150_bb = np.roll(self.cold_array150_bb, - np.argmin(np.abs(self.cold_array150_bb)) - 1)
     	
-    def lpf(self, zeros):
-	zeros *=(2**31 - 1)
-	for i in range(len(zeros)):
-		coeff = np.binary_repr(int(zeros[i]), 32)
-		coeff = int(coeff, 2)
-		#struct.pack('<l', coeff)
-		print i, coeff	
-		self.fpga.write_int('var_b'+str(i + 1),coeff)
-		self.fpga.write_int('var1_b'+str(i + 1),coeff)
-		self.fpga.write_int('var2_b'+str(i + 1),coeff)
-		self.fpga.write_int('var3_b'+str(i + 1),coeff)
-	return 
-   
     def upload_fpg(self):
         print 'Connecting to ROACHII on',self.ip,'...'
         t1 = time.time()
@@ -141,13 +117,12 @@ class roachInterface(object):
     def initialize(self):
         #self.upload_fpg()
         self.v1 = valon_synth.Synthesizer('/dev/ttyUSB0')
-	self.dest_ip  = 192*(2**24) + 168*(2**16) + 41*(2**8) + 1 # Set to FPGA IP in /etc/network/interfaces
+	self.dest_ip  = 192*(2**24) + 168*(2**16) + 41*(2**8) + 2 # Set to FPGA IP in /etc/network/interfaces
         self.fabric_port= 60000 
         self.fpga.write_int('tx_destip',self.dest_ip)
         self.fpga.write_int('tx_destport',self.fabric_port)
         self.fpga.write_int('sync_accum_len', self.accum_len - 1)
-        self.lpf(self.zeros)
-	self.accum_freq = self.fpga_samp_freq / self.accum_len # FPGA clock freq / accumulation length    
+        self.accum_freq = self.fpga_samp_freq / self.accum_len # FPGA clock freq / accumulation length    
         self.fpga.write_int('fft_shift', 2**9 -1)    
         self.fpga.write_int('dds_shift', self.dds_shift)
         #self.save_path = '/mnt/iqstream/'
@@ -438,8 +413,8 @@ class roachInterface(object):
     def dirfile_all_chan(self, time_interval):
 	nchannel = input("Number of channels? ")
 	channels = range(nchannel)
-	data_path = self.curpath
-	sub_folder_1 = "noise_measurements"
+	data_path = "./data"
+	sub_folder_1 = "noise_measurements_0811"
 	sub_folder_2 = raw_input("Insert subfolder name (e.g. single_tone): ")
 	Npackets = np.int(time_interval * self.accum_freq)
 	self.fpga.write_int('pps_start', 1)
@@ -448,12 +423,12 @@ class roachInterface(object):
 	    os.makedirs(save_path)
 	#os.mkdir(save_path)
 	#shutil.copy(data_path + "/format", save_path + "/format")
-	nfo_I = map(lambda x: save_path + "/chI_" + str(x), range(nchannel))
-        nfo_Q = map(lambda y: save_path + "/chQ_" + str(y), range(nchannel))
-        #nfo_phase = map(lambda z: save_path + "/chP_" + str(z), range(nchannel))
+	#nfo_I = map(lambda x: save_path + "/chI_" + str(x), range(nchannel))
+        #nfo_Q = map(lambda y: save_path + "/chQ_" + str(y), range(nchannel))
+        nfo_phase = map(lambda z: save_path + "/chP_" + str(z), range(nchannel))
 	#fo_I = map(lambda x: open(x, "ab"), nfo_I)
 	#fo_Q = map(lambda y: open(y, "ab"), nfo_Q)
-	#fo_phase = map(lambda z: open(z, "ab"), nfo_phase)
+	fo_phase = map(lambda z: open(z, "ab"), nfo_phase)
         fo_time = open(save_path + "/time", "ab")
   	fo_count = open(save_path + "/packet_count", "ab")	
 	count = 0
@@ -470,21 +445,21 @@ class roachInterface(object):
             		else:
                 		I = data[0 + (chan/2)]    
                 		Q = data[512 + (chan/2)]    
-			fo_I[chan].write(struct.pack('i',I))
-	    		fo_Q[chan].write(struct.pack('i',Q))
-	    		#fo_phase[chan].write(struct.pack('f', np.arctan2([Q],[I])))
-			fo_I[chan].flush()
-			fo_Q[chan].flush()
-			#fo_phase[chan].flush()
+			#fo_I[chan].write(struct.pack('i',I))
+	    		#fo_Q[chan].write(struct.pack('i',Q))
+	    		fo_phase[chan].write(struct.pack('f', np.arctan2([Q],[I])))
+			#fo_I[chan].flush()
+			#fo_Q[chan].flush()
+			fo_phase[chan].flush()
 	    	count += 1
 		fo_time.write(struct.pack('d', ts))
 		fo_count.write(struct.pack('L',packet_count))
 		fo_time.flush()
 		fo_count.flush()
 	for chan in channels:
-		fo_I[chan].close()
-		fo_Q[chan].close()
-		#fo_phase[chan].close()
+		#fo_I[chan].close()
+		#fo_Q[chan].close()
+		fo_phase[chan].close()
 	fo_time.close()
 	fo_count.close()
         return 
@@ -496,13 +471,13 @@ class roachInterface(object):
 	Q_center = self.centers.imag
 	nchannel = input("Number of channels? ")
 	channels = range(nchannel)
-	data_path = self.curpath + "/noise_measurements"
-	#sub_folder_1 = "/10272016/noise_measurements"
+	data_path = "./data"
+	sub_folder_1 = "noise_measurements_0811"
 	sub_folder_2 = raw_input("Insert subfolder name (e.g. single_tone): ")
 	Npackets = np.int(time_interval * self.accum_freq)
 	#channels = np.arange(21)
 	self.fpga.write_int('pps_start', 1)
-        save_path = os.path.join(data_path, sub_folder_2)
+        save_path = os.path.join(data_path, sub_folder_1, sub_folder_2)
 	os.mkdir(save_path)
 	#shutil.copy(data_path + "/format", save_path + "/format")
 	nfo_I = map(lambda x: save_path + "/chI_" + str(x), range(nchannel))
@@ -549,7 +524,7 @@ class roachInterface(object):
 	nchannel = input("Number of channels? ")
 	channels = range(nchannel)
 	data_path = "./data"
-	sub_folder_1 = "noise_measurements"
+	sub_folder_1 = "noise_measurements_0811"
 	sub_folder_2 = raw_input("Insert subfolder name (e.g. single_tone): ")
 	Npackets = np.int(time_interval * self.accum_freq)
 	self.fpga.write_int('pps_start', 1)
@@ -620,11 +595,9 @@ class roachInterface(object):
 	rf_freqs = np.array([200.0e6 + bb_freqs[chan] for chan in channels])
 	return di_df[plot_chan], dq_df[plot_chan], rf_freqs[plot_chan]
     
-    def vna_sweep(self, write = False, sweep = False):
-	center_freq = self.center_freq * 1e6
+    def vna_sweep(self, center_freq = 750.0e6, save_path = './sweeps/vna/', write = False, sweep = False):
 	sweep_dir = raw_input('Insert new VNA sweep dir (e.g. 0805_1): ')
-        save_path = os.path.join(self.curpath + '/sweeps/vna', sweep_dir)
-	self.curvna = save_path
+        save_path = os.path.join(save_path, sweep_dir)
 	os.mkdir(save_path)
 	self.v1.set_frequency(0, center_freq/1.0e6, 0.01)
         span = self.pos_delta
@@ -648,28 +621,12 @@ class roachInterface(object):
 	#self.find_kids_olimpo.main(path)
 	return 
 
-    def target_sweep(self, write = True, sweep = False):
-	center_freq = self.center_freq * 1e6
-	optimized = raw_input('Are the freqs optimized? (y/n) ')
-	if optimized == 'y':
-		newpath = raw_input('Is '+str(self.curtgt)+' the correct target directory? (y/n) ')
-		if newpath == 'y':
-			vna_path = self.curtgt
-		else:
-        		vna_path = raw_input('Absolute path to Target sweep dir? ')
-		self.target_freqs = np.load(vna_path + '/optimized_freqs.npy')
-
-	else:
-		newpath = raw_input('Is '+str(self.curvna)+' the correct vna directory? (y/n) ')
-		if newpath == 'y':
-			vna_path = self.curvna
-		else:
-        		vna_path = raw_input('Absolute path to VNA sweep dir? ')
-		self.target_freqs = np.load(vna_path + '/target_freqs.npy')
+    def target_sweep(self, center_freq = 750.0e6, save_path = './sweeps/target', write = True, sweep = False):
+        vna_path = raw_input('Absolute path to VNA sweep dir (e.g. /home/lazarus/sam_git/blast_readout/sweeps/vna/0805_1) ? ')
+	self.target_freqs = np.load(vna_path + '/target_freqs.npy')
 	sweep_dir = raw_input('Insert new target sweep dir (e.g. 0805_1): ')
-        save_path = os.path.join(self.curpath + '/sweeps/target', sweep_dir)
+        save_path = os.path.join(save_path, sweep_dir)
 	os.mkdir(save_path)
-	self.curtgt = save_path
 	np.save(save_path + '/target_freqs.npy', self.target_freqs)
 	#center_freq = (np.max(self.target_freqs) + np.min(self.target_freqs))/2.
         self.bb_target_freqs = ((self.target_freqs*1.0e6) - center_freq)
@@ -698,64 +655,6 @@ class roachInterface(object):
 		self.v1.set_frequency(0,center_freq / (1.0e6), 0.01) # LO
 	self.plot_targ(save_path)
 	return
-
-    def optimize_kids(self, center_freq=750.0e6):
-        """Function that's designed to place the tones on the frequency of maximum responivity"""
-	newpath = raw_input('Is '+str(self.curtgt)+' the correct target directory? (y/n) ')
-	if newpath == 'y':
-		target_path = self.curtgt
-	else:
-        	target_path = raw_input('Absolute path to target sweep dir? ')
-	self.target_freqs = np.load(target_path + '/target_freqs.npy')
-	self.target_path = target_path
-	self.curtgt = target_path
-        self.bb_freqs = np.load(self.target_path + '/bb_freqs.npy')
-        self.lo_freqs = np.load(self.target_path + '/sweep_freqs.npy')
-        upconvert = self.bb_freqs+center_freq
-        data_files=[f for f in sorted(os.listdir(self.target_path)) if f.endswith('.npy')]
-        I = np.array([np.load(os.path.join(self.target_path,f)) for f in data_files if f.startswith('I')])
-        Q = np.array([np.load(os.path.join(self.target_path,f)) for f in data_files if f.startswith('Q')])
-        self.raw_chan = I + 1j*Q
-        self.raw_I = self.raw_chan.real
-        self.raw_Q = self.raw_chan.imag
-        self.freq_array= np.empty([len(self.bb_freqs),len(self.lo_freqs)]) #[det channel, lo freqs]
-        self.loop_spacing = np.empty([len(self.bb_freqs),len(self.lo_freqs)-1])
-        self.optimized_freqs=np.empty([len(self.bb_freqs)])
-        for n in np.arange(len(self.lo_freqs)):
-            #print np.shape(self.freq_array[:,n]),np.shape(self.bb_freqs),np.shape(self.lo_freqs[n])
-            self.freq_array[:,n]=self.bb_freqs[:,0]+self.lo_freqs[n]
-	#print self.freq_array
-        for n in np.arange(len(self.lo_freqs)-1):
-            #calculate the distance between pts on the IQ loop
-            self.loop_spacing[:,n]=np.abs(self.raw_chan[n+1]-self.raw_chan[n])
-            #print self.loop_spacing[:,n]
-	#print len(self.lo_freqs)
-        for n in np.arange(len(self.bb_freqs)):
-            #take the freq between two most distant pts on IQ loop
-            if np.argmax(self.loop_spacing[n,:])+1 < len(self.lo_freqs):
-            	print np.argmax(self.loop_spacing[n,:])+1
-            	self.optimized_freqs[n]=(self.freq_array[n,np.argmax(self.loop_spacing[n,:])+1]+self.freq_array[n,np.argmax(self.loop_spacing[n,:])])/2
-            	print 'optimizing tone to ' + str(self.optimized_freqs[n])
-            else:
-		print 'loop segments'
-		print self.loop_spacing[n,:]
-            	print 'taking original tone of ' + str(self.bb_freqs[n,0]+self.center_freq*1e6)
-            	self.optimized_freqs[n]=self.bb_freqs[n,0]+self.center_freq*1e6
-        #save the new set of frequencies
-        np.save(self.target_path + '/optimized_freqs.npy', self.optimized_freqs/1e6)
-	#print self.target_path + '/optimized_freqs.npy'
-	print 'New freqs are'
-	print self.optimized_freqs
-	print 'There are ' + str(len(self.optimized_freqs)) + ' tones in the comb'
-	reprogram = raw_input('Rewrite the waveform comb? (y/n) ')
-	if reprogram == 'y':
-        	#reprogram waveform with new optimized frequencies
-		ans2 = raw_input('Use transfer function? (y/n) ')
-        	if ans2 == 'n':
-            		self.writeQDR(self.optimized_freqs-center_freq, transfunc = False)
-        	if ans2 == 'y':
-            		self.writeQDR(self.optimized_freqs-center_freq, transfunc = True)
-        return
     
     def store_UDP(self, Npackets, LO_freq, save_path, skip_packets=2, channels = None):
 	channels = np.arange(channels)
@@ -845,7 +744,7 @@ class roachInterface(object):
 	#bb_freqs = np.concatenate(bb_freqs[len(b_freqs)/2:],bb_freqs[:len(bb_freqs)/2]))
 	chan_freqs = np.concatenate((chan_freqs[len(chan_freqs)/2:],chan_freqs[:len(chan_freqs)/2]))
 	new_targs = [chan_freqs[chan][np.argmin(mags[chan])] for chan in range(channels)]
-	#print new_targs
+	print new_targs
 	for chan in range(channels):
 		plt.plot(chan_freqs[chan],mags[chan])
 	plt.title('Target sweep')
@@ -1065,10 +964,8 @@ class roachInterface(object):
             count += 1
         I_file = 'I' + str(LO_freq)
         Q_file = 'Q' + str(LO_freq)
-        np.save(os.path.join(save_path,I_file), I_buffer[skip_packets:]) 
-        np.save(os.path.join(save_path,Q_file), Q_buffer[skip_packets:]) 
-        #np.save(os.path.join(save_path,I_file), np.mean(I_buffer[skip_packets:], axis = 0)) 
-        #np.save(os.path.join(save_path,Q_file), np.mean(Q_buffer[skip_packets:], axis = 0)) 
+        np.save(os.path.join(save_path,I_file), np.mean(I_buffer[skip_packets:], axis = 0)) 
+        np.save(os.path.join(save_path,Q_file), np.mean(Q_buffer[skip_packets:], axis = 0)) 
         return 
     
     def programLO(self, freq=200.0e6, sweep_freq=0):
@@ -1130,11 +1027,7 @@ class roachInterface(object):
             		except KeyboardInterrupt:
 				pass
 	    if opt == 5:
-		newpath = raw_input('Is '+str(self.curvna)+' the correct vna directory? (y/n) ')
-		if newpath == 'y':
-			path = self.curvna
-		else:
-			path = raw_input('Absolute path to VNA sweep dir? ')
+		path = raw_input("Absolute data path to a good VNA sweep dir (e.g. /home/lazarus/sam_git/blast_readout/sweeps/vna/0806_2): ")
                 try:
 			fk.main(path)
 	    	except KeyboardInterrupt:
@@ -1176,27 +1069,8 @@ class roachInterface(object):
 	    	try:
 			self.dirfile_phase_centered(time_interval)
 		except KeyboardInterrupt:
-			pass
+			pass 
 	    if opt == 11:
-                try:
-			self.optimize_kids()
-	    	except KeyboardInterrupt:
-			pass
-	    if opt == 12:
-                try:
-			chan=input('Number of channels? ')
-			channum=np.arange(chan)
-			time_interval = input('Time interval (s) ? ')
-			LO_freq = self.center_freq
-			folder = raw_input('Name the subfolder: ')
-			save_path = self.curpath +'/noise_measurements/' + folder
-			os.mkdir(save_path) 
-			self.stream_and_save(time_interval, LO_freq, save_path, 2, channum)
-	    	except KeyboardInterrupt:
-			pass
-
- 
-	    if opt == 13:
                 sys.exit()
         return
     

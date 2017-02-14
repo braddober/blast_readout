@@ -15,11 +15,11 @@ y_formatter = matplotlib.ticker.ScalarFormatter(useOffset=False)
 class pipeline(object):
     def __init__(self):
         ######## Target Sweeps ############
-        #self.targ_path = raw_input('Absolute path to known good target sweep dir (e.g. /home/olimpo/olimpo_readout/sweeps/target/0805_1): ' )
-	self.noise_root_path = '/home/lazarus/sam_git/blast_readout/data/noise_measurements_0811'
-	"""
-	self.accum_freq = 256.0e6 / (2**20)
-	self.targ_path = '/home/lazarus/sam_git/olimpo_readout/sweeps/target/0804_3'
+        self.targ_path = raw_input('Absolute path to known good target sweep dir (e.g. /home/olimpo/olimpo_readout/sweeps/target/0805_1): ' )
+	self.noise_root_path = '/home/pcuser/data/111516/noise_measurements/100_275mk_4kbb'
+
+	self.accum_freq = 256.0e6 / (2**19)
+	#self.targ_path = '/home/pcuser/data/10272016/sweeps/target/1'
 	data_files=[f for f in sorted(os.listdir(self.targ_path)) if f.endswith('.npy')]
         I = np.array([np.load(os.path.join(self.targ_path,f)) for f in data_files if f.startswith('I')])
         Q = np.array([np.load(os.path.join(self.targ_path,f)) for f in data_files if f.startswith('Q')])
@@ -44,7 +44,7 @@ class pipeline(object):
 	if prompt == 'y':
 		np.save(self.targ_path + '/centers.npy', self.centers)
         	np.save(self.targ_path + '/rotations.npy', self.rotations)
-	"""
+
     def open_stored(self, save_path = None):
         files = sorted(os.listdir(save_path))
         sweep_freqs = np.array([np.float(filename[1:-4]) for filename in files if (filename.startswith('I'))])
@@ -155,7 +155,7 @@ class pipeline(object):
         axs[2].axis('equal')                    
         plt.grid()            
         plt.tight_layout()
-	plt.savefig('/home/lazarus/sam_git/multiplot.pdf', bbox = 'tight')
+	plt.savefig('/home/pcuser/data/11152016/plots/multiplot.pdf', bbox = 'tight')
         plt.show()         
         return
 
@@ -188,6 +188,51 @@ class pipeline(object):
         plt.ylabel('dB')
 	return
 
+    def overplot_targ(self, path1, path2):
+    	plt.ion()
+	plt.figure(6)
+	plt.clf()
+	lo_freqs_1, Is_1, Qs_1 = self.open_stored(path1)
+	lo_freqs_2, Is_2, Qs_2 = self.open_stored(path1)
+	lo_freqs1 = np.load(path1 + '/sweep_freqs.npy')
+	lo_freqs2 = np.load(path2 + '/sweep_freqs.npy')
+	bb_freqs1 = np.load(path1 + '/bb_freqs.npy')
+	bb_freqs2 = np.load(path2 + '/bb_freqs.npy')
+	channels1 = len(bb_freqs1)
+	channels2 = len(bb_freqs2)
+	mags1 = np.zeros((channels1,len(lo_freqs1))) 
+	mags2 = np.zeros((channels2,len(lo_freqs2))) 
+	chan_freqs_1 = np.zeros((channels1,len(lo_freqs1)))
+	chan_freqs_2 = np.zeros((channels2,len(lo_freqs2)))
+        new_targs1 = np.zeros((channels1))
+        new_targs2 = np.zeros((channels2))
+	for chan in range(channels1):
+        	mags1[chan] = np.sqrt(Is_1[:,chan]**2 + Qs_1[:,chan]**2)
+		mags1[chan] /= 2**17 - 1
+		mags1[chan] /= ((2**19 - 1) / 512.)
+		mags1[chan] = 20*np.log10(mags1[chan])
+		chan_freqs_1[chan] = (lo_freqs1 + bb_freqs1[chan])/1.0e6
+	mags1 = np.concatenate((mags1[len(mags1)/2:],mags1[:len(mags1)/2]))
+	for chan in range(channels2):
+        	mags2[chan] = np.sqrt(Is_2[:,chan]**2 + Qs_2[:,chan]**2)
+		mags2[chan] /= 2**17 - 1
+		mags2[chan] /= ((2**19 - 1) / 512.)
+		mags2[chan] = 20*np.log10(mags2[chan])
+		chan_freqs_2[chan] = (lo_freqs1 + bb_freqs1[chan])/1.0e6
+	mags2 = np.concatenate((mags2[len(mags2)/2:],mags2[:len(mags2)/2]))
+	#bb_freqs = np.concatenate(bb_freqs[len(b_freqs)/2:],bb_freqs[:len(bb_freqs)/2]))
+	chan_freqs_1 = np.concatenate((chan_freqs_1[len(chan_freqs_1)/2:],chan_freqs_1[:len(chan_freqs_1)/2]))
+	chan_freqs_2 = np.concatenate((chan_freqs_2[len(chan_freqs_2)/2:],chan_freqs_2[:len(chan_freqs_2)/2]))
+	#new_targs = [chan_freqs[chan][np.argmin(mags[chan])] for chan in range(channels)]
+	#print new_targs
+	for chan in range(channels1):
+		plt.plot(chan_freqs_1[chan],mags1[chan], c = 'b')
+	for chan in range(channels2):
+		plt.plot(chan_freqs_2[chan],mags2[chan], c = 'r')
+	plt.title('Target sweep')
+	plt.xlabel('frequency (MHz)')
+        plt.ylabel('dB')
+	return
 
     def plotPSD(self, chan, time_interval):
 	path1 = os.path.join(self.noise_root_path, "chan1_120")
@@ -243,7 +288,7 @@ class pipeline(object):
 	ax.plot(np.linspace(0, self.accum_freq/2., (Npackets/2) + 1), psd500, color = 'r', alpha = 0.6,  linewidth = 1, label = "500 chan")
 	ax.plot(np.linspace(0, self.accum_freq/2., (Npackets/2) + 1), psd1000, color = 'g', alpha = 0.4,  linewidth = 1, label = "1000 chan")
 	plt.legend(loc = 'lower left', fontsize = 28)
-	plt.savefig('/home/lazarus/sam_git/blast_readout/data/multi_chan.pdf', bbox = 'tight')
+	plt.savefig('/home/pcuser/data/10272016/plots/multi_chan.pdf', bbox = 'tight')
 	plt.show()
 	return
     
@@ -351,7 +396,7 @@ class pipeline(object):
 	ax1.plot(np.linspace(0, self.accum_freq/2., (Npackets/2) + 1), avg_psd_500, color = 'r', alpha = 0.6, linewidth = 1, label = '500')
 	ax1.plot(np.linspace(0, self.accum_freq/2., (Npackets/2) + 1), avg_psd_1000, color = 'g', alpha = 0.5, linewidth = 1, label = '1000')
 	plt.legend(loc = 'lower left', fontsize = 28)
-	plt.savefig('/home/lazarus/sam_git/blast_readout/data/avg_psd.pdf', bbox = 'tight')
+	plt.savefig('/home/pcuser/data/10272016/plots/avg_psd.pdf', bbox = 'tight')
 	
 	time_vals = np.linspace(0, self.accum_freq/2., (Npackets/2) + 1)
 	
@@ -376,7 +421,7 @@ class pipeline(object):
 	ax2.plot(chans, avgs, 'r*')
 	plt.xlim((0,1010))
 	plt.grid()
-	plt.savefig('/home/lazarus/sam_git/blast_readout/data/nchan_v_noise.pdf', bbox = 'tight')
+	plt.savefig('/home/pcuser/data/10272016/plots/nchan_v_noise.pdf', bbox = 'tight')
 	plt.show()
 	return
 
@@ -486,11 +531,11 @@ class pipeline(object):
 	ax1.plot(np.linspace(0, self.accum_freq/2., (Npackets/2) + 1), avg_psd_500, color = 'r', alpha = 0.6, linewidth = 1, label = '500')
 	ax1.plot(np.linspace(0, self.accum_freq/2., (Npackets/2) + 1), avg_psd_1000, color = 'g', alpha = 0.5, linewidth = 1, label = '1000')
 	plt.legend(loc = 'upper right', fontsize = 28)
-	plt.savefig('/home/lazarus/sam_git/blast_readout/data/avg_psd_300.pdf', bbox = 'tight')
+	plt.savefig('/home/pcuser/data/10272016/plots/avg_psd_300.pdf', bbox = 'tight')
 	plt.show()
 
     def plot_on_off(self, chan):
-	root_path = '/home/lazarus/sam_git/olimpo_readout/noise_measurements_0806'
+	root_path = '/home/pcuser/data/11152016/plots'
 	path_off = os.path.join(root_path, "olimpo150_phase_off_res_2")
 	path_on = os.path.join(root_path, "olimpo150_phase_centered_1")
 	LO_freq = self.center_freq
@@ -534,7 +579,7 @@ class pipeline(object):
 	return
 
     def plot_on_off_avg(self):
-	root_path = '/home/lazarus/sam_git/olimpo_readout/noise_measurements_0806'
+	root_path = '/home/pcuser/data/11152016/plots'
 	path_off = os.path.join(root_path, "olimpo150_phase_off_res_1")
 	path_on = os.path.join(root_path, "olimpo150_phase_centered_1")
 	LO_freq = (200.)*1.0e6
